@@ -7,17 +7,37 @@ def read_file(filename):
     with open(filename, 'r') as file:
         return file.read().strip()
 
-def get_user_repos(username, token):
-    url = f"https://api.github.com/users/{username}/repos"
-    print("Token is", token)
+def get_authenticated_user(token):
+    """Get the username of the authenticated user."""
     headers = {
-        "Authorization": f"{token}",
+        "Authorization": f"token {token}",
         "Accept": "application/vnd.github.v3+json"
     }
+    response = requests.get("https://api.github.com/user", headers=headers)
+    if response.status_code == 200:
+        return response.json().get('login')
+    return None
+
+def get_user_repos(username, token):
+    auth_user = get_authenticated_user(token)
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+
+    # Use /user/repos for authenticated user (includes private repos)
+    # Use /users/{username}/repos for other users (public only)
+    if auth_user and auth_user.lower() == username.lower():
+        url = "https://api.github.com/user/repos"
+        params = "affiliation=owner&"
+    else:
+        url = f"https://api.github.com/users/{username}/repos"
+        params = ""
+
     repos = []
     page = 1
     while True:
-        response = requests.get(f"{url}?page={page}&per_page=100", headers=headers)
+        response = requests.get(f"{url}?{params}page={page}&per_page=100", headers=headers)
         if response.status_code == 200:
             page_repos = response.json()
             if not page_repos:
@@ -30,12 +50,18 @@ def get_user_repos(username, token):
     return repos
 
 def sync_repo(repo, token, base_path):
+    Path(base_path).mkdir(parents=True, exist_ok=True)
     repo_path = Path(base_path) / repo['name']
+    # Create authenticated URL for private repo access
+    clone_url = repo['clone_url'].replace('https://', f'https://{token}@')
+
     if repo_path.exists():
         print(f"Updating existing repo: {repo['name']}")
         try:
             git_repo = git.Repo(repo_path)
             origin = git_repo.remotes.origin
+            # Update remote URL with token for private repos
+            origin.set_url(clone_url)
             origin.fetch()
             origin.pull()
         except git.GitCommandError as e:
@@ -43,7 +69,7 @@ def sync_repo(repo, token, base_path):
     else:
         print(f"Cloning new repo: {repo['name']}")
         try:
-            git.Repo.clone_from(repo['clone_url'], repo_path, env={'GIT_ASKPASS': 'echo', 'GIT_USERNAME': 'token', 'GIT_PASSWORD': token})
+            git.Repo.clone_from(clone_url, repo_path)
         except git.GitCommandError as e:
             print(f"Error cloning repo {repo['name']}: {e}")
 
