@@ -18,6 +18,27 @@ def get_authenticated_user(token):
         return response.json().get('login')
     return None
 
+def get_org_repos(org, token):
+    url = f"https://api.github.com/orgs/{org}/repos"
+    headers = {
+        "Authorization": f"{token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    repos = []
+    page = 1
+    while True:
+        response = requests.get(f"{url}?page={page}&per_page=100", headers=headers)
+        if response.status_code == 200:
+            page_repos = response.json()
+            if not page_repos:
+                break
+            repos.extend(page_repos)
+            page += 1
+        else:
+            print(f"Error fetching repos for org {org}: {response.status_code}/{response.text}")
+            break
+    return repos
+
 def get_user_repos(username, token):
     auth_user = get_authenticated_user(token)
     headers = {
@@ -84,6 +105,17 @@ def main():
         repos = get_user_repos(username, token)
         for repo in repos:
             sync_repo(repo, token, base_path / username)
+
+    orgs_file = Path('orgs.txt')
+    if orgs_file.exists():
+        orgs = read_file('orgs.txt').split('\n')
+        for org in orgs:
+            if not org:
+                continue
+            print(f"Syncing repositories for org: {org}")
+            repos = get_org_repos(org, token)
+            for repo in repos:
+                sync_repo(repo, token, base_path / org)
 
 if __name__ == "__main__":
     main()
