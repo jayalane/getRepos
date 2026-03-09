@@ -21,7 +21,7 @@ def get_authenticated_user(token):
 def get_org_repos(org, token):
     url = f"https://api.github.com/orgs/{org}/repos"
     headers = {
-        "Authorization": f"{token}",
+        "Authorization": f"token {token}",
         "Accept": "application/vnd.github.v3+json"
     }
     repos = []
